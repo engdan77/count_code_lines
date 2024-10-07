@@ -2,7 +2,7 @@ import datetime
 import json
 import collections
 from json import JSONDecodeError
-from typing import Literal, Tuple, Dict, Any
+from typing import Literal, Tuple, Dict, Any, Annotated
 from pygount.command import pygount_command
 import requests
 from tempfile import NamedTemporaryFile, TemporaryDirectory
@@ -12,11 +12,44 @@ from loguru import logger
 from py_markdown_table.markdown_table import markdown_table
 from git import Repo
 
+
+EXCLUDE_PATTERN = "...,zope,twisted,garden"
+
 Repository = collections.namedtuple('repo', 'name url year')
 CountSummary = dict[Literal['dirs', 'github'], collections.Counter]
 ReposSummary = tuple[dict[str | Any, dict]]
+Years = Annotated[set, 'years']
+SourceLinesPerYear = tuple[Annotated[str, 'source name'], Annotated[collections.defaultdict[str, list], 'source and per year']]
 
 cli_app = typer.Typer()
+
+
+def get_code_per_year_source(summary: dict) -> tuple[Years, SourceLinesPerYear]:
+    all_years = set()
+    for source, repos in summary.items():
+        for repo, data in repos.items():
+            all_years.add(data['year'])
+    source_lines_per_year = collections.defaultdict(list)
+    for source, repos in summary.items():
+        c = collections.Counter()
+        for repo, data in repos.items():
+            c[data['year']] += data['totalCodeCount']
+        for year, count in c.items():
+            source_lines_per_year[source].append(count)
+    return all_years, source_lines_per_year
+
+
+def code_per_year_to_chart(all_years: Years, per_source: SourceLinesPerYear,
+                           title:str='Line of codes per source',
+                           x_axis_title: str='Year') -> str:
+    prefix = f'''xychart-beta
+      title "{title}"
+      x-axis "{x_axis_title}" {json.dumps(list(all_years))}
+'''
+    data_lines = []
+    for source, data_list in per_source.items():
+        data_lines.append(f'      bar "{source.split('/').pop()}" {json.dumps(data_list)}')
+    return prefix + '\n'.join(data_lines)
 
 
 def get_all_github_repos(user='engdan77') -> list[Repository]:
@@ -33,7 +66,9 @@ def get_repo_summary_file(tmp_file: NamedTemporaryFile, repo_folder: Path | str)
         f = repo_folder.as_posix()
     else:
         f = repo_folder.url
-    pygount_command(['--format', 'json', '--out', tmp_file.name, f])
+    args = ['--folders-to-skip', EXCLUDE_PATTERN] if EXCLUDE_PATTERN else []
+    args.extend(['--format', 'json', '--out', tmp_file.name, f])
+    pygount_command(args)
     try:
         summary = json.loads(open(tmp_file.name).read())['summary']
         summary['year'] = get_repo_create_year(repo_folder)
@@ -54,30 +89,6 @@ def get_repo_create_year(source: str | Repository) -> int:
         return year
 
 
-def get_repo_create_year_by_url(url: str) -> int:
-    with TemporaryDirectory() as tmp_folder:
-        r = Repo.clone_from(url, tmp_folder)
-        first_commit = next(r.iter_commits())
-        year = datetime.datetime.fromtimestamp(first_commit.committed_date).year
-        return year
-
-
-@cli_app.command()
-def repos_summary(repos: list[str] = typer.Argument(..., help='Either a path or an URL'),
-                  sub_folders_as_repos: bool = typer.Option(True, help='Treat sub-folders as repositories')) \
-        -> tuple[ReposSummary, CountSummary]:
-
-    r = get_summaries(repos, sub_folders_as_repos)
-    repo_md = None
-
-    table_data = []
-    for source in r:
-        source_data = dict(sorted(r[source].items(), key=lambda x: x[1]['year']))
-        print(f'*{source.split('/').pop()}*')
-        for repo_name, data in source_data.items():
-            table_data.append({'repo_name': repo_name.pop(), 'year': data['year'], 'lines_of_code': data['totalCodeCount']})
-    markdown = markdown_table(table_data).get_markdown()
-    print(markdown)
 
 
 def get_summaries(sources, parse_sub_folders_as_repos) -> dict[str, dict]:
@@ -99,6 +110,27 @@ def get_summaries(sources, parse_sub_folders_as_repos) -> dict[str, dict]:
                 summary = get_repo_summary_file(tmp_file, process_source)
                 summarization[source][process_source.name] = summary
     return summarization
+
+
+@cli_app.command()
+def repos_summary(repos: list[str] = typer.Argument(..., help='Either a path or an URL'),
+                  sub_folders_as_repos: bool = typer.Option(True, help='Treat sub-folders as repositories')) \
+        -> tuple[ReposSummary, CountSummary]:
+    r = get_summaries(repos, sub_folders_as_repos)
+
+    for source in r:
+        table_data = []
+        source_data = dict(sorted(r[source].items(), key=lambda x: x[1]['year']))
+        print(f'*{source.split('/').pop()}*')
+        for repo_name, data in source_data.items():
+            table_data.append({'repo_name': repo_name, 'year': data['year'], 'lines_of_code': data['totalCodeCount']})
+        markdown = markdown_table(table_data).get_markdown()
+        print(markdown)
+
+    all_years, data = get_code_per_year_source(r)
+    output = code_per_year_to_chart(all_years, data)
+    print(output)
+
 
 
 if __name__ == "__main__":
