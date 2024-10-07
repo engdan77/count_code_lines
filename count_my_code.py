@@ -1,6 +1,7 @@
 import datetime
 import json
 import collections
+import sys
 from json import JSONDecodeError
 from typing import Literal, Tuple, Dict, Any, Annotated
 from pygount.command import pygount_command
@@ -8,9 +9,18 @@ import requests
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from pathlib import Path
 import typer
-from loguru import logger
 from py_markdown_table.markdown_table import markdown_table
 from git import Repo
+from enum import StrEnum, auto
+from rich.logging import RichHandler
+import logging
+from rich.console import Console
+from rich import print_json
+from rich.markdown import Markdown
+
+
+logging.basicConfig(level=logging.INFO, datefmt="[%X]", format="%(message)s", handlers=[RichHandler()])
+logger = logging.getLogger(__name__)
 
 
 EXCLUDE_PATTERN = "...,zope,twisted,garden"
@@ -23,6 +33,11 @@ SourceLinesPerYear = tuple[Annotated[str, 'source name'], Annotated[collections.
 
 cli_app = typer.Typer()
 
+
+class OutputFormat(StrEnum):
+    MARKDOWN = auto()
+    JSON = auto()
+    RICH = auto()
 
 def get_code_per_year_source(summary: dict) -> tuple[Years, SourceLinesPerYear]:
     all_years = set()
@@ -42,14 +57,16 @@ def get_code_per_year_source(summary: dict) -> tuple[Years, SourceLinesPerYear]:
 def code_per_year_to_chart(all_years: Years, per_source: SourceLinesPerYear,
                            title:str='Line of codes per source',
                            x_axis_title: str='Year') -> str:
-    prefix = f'''xychart-beta
+    prefix = f'''
+```mermaid
+xychart-beta
       title "{title}"
       x-axis "{x_axis_title}" {json.dumps(list(all_years))}
 '''
     data_lines = []
     for source, data_list in per_source.items():
         data_lines.append(f'      bar "{source.split('/').pop()}" {json.dumps(data_list)}')
-    return prefix + '\n'.join(data_lines)
+    return prefix + '\n'.join(data_lines) + '```'
 
 
 def get_all_github_repos(user='engdan77') -> list[Repository]:
@@ -112,24 +129,60 @@ def get_summaries(sources, parse_sub_folders_as_repos) -> dict[str, dict]:
     return summarization
 
 
-@cli_app.command()
-def repos_summary(repos: list[str] = typer.Argument(..., help='Either a path or an URL'),
-                  sub_folders_as_repos: bool = typer.Option(True, help='Treat sub-folders as repositories')) \
-        -> tuple[ReposSummary, CountSummary]:
-    r = get_summaries(repos, sub_folders_as_repos)
+def output_as_markdown(summaries: dict[str, dict]) -> str:
+    output_markdown = ''
 
-    for source in r:
+    for source in summaries:
         table_data = []
-        source_data = dict(sorted(r[source].items(), key=lambda x: x[1]['year']))
-        print(f'*{source.split('/').pop()}*')
+        source_data = dict(sorted(summaries[source].items(), key=lambda x: x[1]['year']))
+        output_markdown += f'### {source.split('/').pop()}\n\n'
         for repo_name, data in source_data.items():
             table_data.append({'repo_name': repo_name, 'year': data['year'], 'lines_of_code': data['totalCodeCount']})
-        markdown = markdown_table(table_data).get_markdown()
-        print(markdown)
+        output_markdown = markdown_table(table_data).get_markdown()
 
-    all_years, data = get_code_per_year_source(r)
+    all_years, data = get_code_per_year_source(summaries)
     output = code_per_year_to_chart(all_years, data)
-    print(output)
+    output_markdown += output
+    return output_markdown
+
+
+def output_as_json(summaries: dict[str, dict]) -> dict:
+    output_json = {}
+    for source in summaries:
+        source_data = dict(sorted(summaries[source].items(), key=lambda x: x[1]['year']))
+        source_name = f'{source.split('/').pop()}'
+        for repo in source_data:
+            output_json[source] = []
+            output_json[source].append({'repo_name': repo, 'year': source_data['year'], 'lines_of_code': source_data['totalCodeCount']})
+
+    all_years, data = get_code_per_year_source(summaries)
+    output_json['per_years'] = all_years
+    return output_json
+
+
+
+@cli_app.command()
+def repos_summary(repos: list[str] = typer.Argument(..., help='Either a path or an URL'),
+                  sub_folders_as_repos: bool = typer.Option(True, help='Treat sub-folders as repositories'),
+                  output_format: OutputFormat = typer.Option(OutputFormat.RICH, help='Output format')) \
+        -> tuple[ReposSummary, CountSummary]:
+
+    r = get_summaries(repos, sub_folders_as_repos)
+    match output_format:
+        case OutputFormat.MARKDOWN:
+            print(output_as_markdown(r), file=sys.stdout)
+        case OutputFormat.RICH:
+            console = Console()
+            md = Markdown(output_as_markdown(r))
+            console.print(md)
+        case OutputFormat.JSON:
+            print_json(json.dumps(output_as_json(r)))
+
+
+
+
+
+
 
 
 
