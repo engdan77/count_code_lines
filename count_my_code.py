@@ -2,6 +2,7 @@
 # requires-python = "==3.12"
 # dependencies = [
 #     "millify==0.1.1",
+#     "plotext",
 #     "py-markdown-table==1.1.0",
 #     "pygount==1.8.0",
 #     "requests==2.32.3",
@@ -17,7 +18,7 @@ import sys
 from json import JSONDecodeError
 from typing import Literal, Any, Annotated
 
-from millify import millify
+import millify
 from pygount.command import pygount_command
 import requests
 from tempfile import NamedTemporaryFile, TemporaryDirectory
@@ -32,9 +33,11 @@ from rich.console import Console
 from rich import print_json
 from rich.markdown import Markdown
 import warnings
+import plotext as plt
 
 __email__ = "daniel@engvalls.eu"
 
+from rich.table import Table
 
 warnings.filterwarnings(action='ignore', module='millify')
 
@@ -83,7 +86,7 @@ def get_code_per_year_source(summary: dict) -> tuple[Years, SourceLinesPerYear]:
     return all_years, source_lines_per_year
 
 
-def code_per_year_to_chart(
+def code_per_year_to_mermaid_chart(
     all_years: Years,
     per_source: SourceLinesPerYear,
     title: str = "Line of codes per year",
@@ -100,7 +103,17 @@ xychart-beta
         data_lines.append(
             f'      bar "{source.split('/').pop()}" {json.dumps(data_list)}'
         )
-    return prefix + "\n".join(data_lines) + "```"
+    return prefix + "\n".join(data_lines) + "\n```"
+
+
+def print_code_per_year_to_plotext_chart(
+    all_years: Years,
+    per_source: SourceLinesPerYear,
+    title: str = "Line of codes per year",
+):
+    years = all_years
+    plt.simple_stacked_bar(years, list(per_source.values()), width=100, labels=[_.split('/').pop() for _ in per_source.keys()], title=title)
+    plt.show()
 
 
 def get_all_github_repos(user="engdan77") -> list[Repository]:
@@ -159,7 +172,7 @@ def get_summaries(sources, parse_sub_folders_as_repos) -> dict[str, dict]:
             for process_source in process_sources:
                 logger.info(f"Processing {source} / {process_source.name.strip()}")
                 summary = get_repo_summary_file(tmp_file, process_source)
-                summarization[source][process_source.name] = summary
+                summarization[source.removesuffix('/')][process_source.name] = summary
     return summarization
 
 
@@ -182,12 +195,35 @@ def output_as_markdown(summaries: dict[str, dict]) -> str:
             )
         output_markdown += "\n\n" + markdown_table(table_data).get_markdown()
 
-    output_markdown += "\n\n## Summary\n\n"
+    output_markdown += "\n\n## Summary\n\n".replace('\n\n\n', '\n\n')  # TODO: Investigate where newlines comes from
 
     all_years, data = get_code_per_year_source(summaries)
-    output = code_per_year_to_chart(all_years, data)
+    output = code_per_year_to_mermaid_chart(all_years, data)
     output_markdown += output
     return output_markdown
+
+
+def print_output_as_rich(summaries: dict[str, dict]) -> None:
+    console = Console()
+    for source in summaries:
+        table = Table(title=source)
+        table.add_column("Project", justify="right", style="cyan", no_wrap=True)
+        table.add_column("Year", style="magenta")
+        table.add_column("Lines of code", justify="right", style="green")
+        source_data = dict(sorted(summaries[source].items(), key=lambda x: x[1]["year"]))
+        for repo_name, data in source_data.items():
+            table.add_row(repo_name, str(data["year"]), str(data["totalCodeCount"]))
+        console.print(table)
+
+    d = get_summary_of_all(summaries)
+    console.print(
+        f'[bold]Total line codes: [/bold] {millify.millify(d['total_lines'])}'
+    )
+    console.print(f'[bold]Projects: [/bold] {d['repo_count']}')
+    console.print(f'[bold]Across years: [/bold] {d['across_years']}')
+
+    all_years, data = get_code_per_year_source(summaries)
+    print_code_per_year_to_plotext_chart(all_years, data)
 
 
 def output_as_json(summaries: dict[str, dict]) -> dict:
@@ -234,24 +270,18 @@ def repos_summary(
         True, help="Treat sub-folders as repositories"
     ),
     output_format: OutputFormat = typer.Option(OutputFormat.RICH, help="Output format"),
-) -> tuple[ReposSummary, CountSummary]:
+):
     r = get_summaries(repos, sub_folders_as_repos)
     match output_format:
         case OutputFormat.MARKDOWN:
             print(output_as_markdown(r), file=sys.stdout)
         case OutputFormat.RICH:
-            console = Console()
-            md = Markdown(output_as_markdown(r))
-            console.print(md)
-            d = get_summary_of_all(r)
-            console.print(
-                f'[bold]Total line codes: [/bold] {millify(d['total_lines'])}'
-            )
-            console.print(f'[bold]Projects: [/bold] {d['repo_count']}')
-            console.print(f'[bold]Across years: [/bold] {d['across_years']}')
+            print_output_as_rich(r)
         case OutputFormat.JSON:
             d = output_as_json(r)
-            print_json(json.dumps(d))
+            j = json.dumps(d)
+            print_json(j)
+            return j
 
 
 if __name__ == "__main__":
