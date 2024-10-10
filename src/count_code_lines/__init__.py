@@ -1,2 +1,2 @@
-from .count_my_code import cli_app
+from .app import cli_app
 
