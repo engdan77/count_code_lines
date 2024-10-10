@@ -31,7 +31,6 @@ from rich.logging import RichHandler
 import logging
 from rich.console import Console
 from rich import print_json
-from rich.markdown import Markdown
 import warnings
 import plotext as plt
 
@@ -39,7 +38,7 @@ __email__ = "daniel@engvalls.eu"
 
 from rich.table import Table
 
-warnings.filterwarnings(action='ignore', module='millify')
+warnings.filterwarnings(action="ignore", module="millify")
 
 
 logging.basicConfig(
@@ -72,6 +71,10 @@ class OutputFormat(StrEnum):
 
 
 def get_code_per_year_source(summary: dict) -> tuple[Years, SourceLinesPerYear]:
+    """
+    :param summary: A dictionary containing source, repository, and data for each code summary.
+    :return: A tuple containing a set of all years and a dictionary with source lines per year for each source.
+    """
     all_years = set()
     for source, repos in summary.items():
         for repo, data in repos.items():
@@ -92,6 +95,13 @@ def code_per_year_to_mermaid_chart(
     title: str = "Line of codes per year",
     x_axis_title: str = "Year",
 ) -> str:
+    """
+    :param all_years: A list of all years for which the data is provided.
+    :param per_source: A dictionary mapping source names to lines of code per year.
+    :param title: The title of the chart. Defaults to "Line of codes per year".
+    :param x_axis_title: The label for the x-axis. Defaults to "Year".
+    :return: A string representing a Mermaid chart displaying the lines of code per year.
+    """
     prefix = f"""
 ```mermaid
 xychart-beta
@@ -112,7 +122,13 @@ def print_code_per_year_to_plotext_chart(
     title: str = "Line of codes per year",
 ):
     years = all_years
-    plt.simple_stacked_bar(years, list(per_source.values()), width=100, labels=[_.split('/').pop() for _ in per_source.keys()], title=title)
+    plt.simple_stacked_bar(
+        years,
+        list(per_source.values()),
+        width=100,
+        labels=[_.split("/").pop() for _ in per_source.keys()],
+        title=title,
+    )
     plt.show()
 
 
@@ -127,7 +143,6 @@ def get_all_github_repos(user="engdan77") -> list[Repository]:
 def get_repo_summary_file(
     tmp_file: NamedTemporaryFile, repo_folder: Path | str
 ) -> dict:
-    """Why: abstract reading the file and also add year"""
     if isinstance(repo_folder, Path):
         f = repo_folder.as_posix()
     else:
@@ -172,7 +187,7 @@ def get_summaries(sources, parse_sub_folders_as_repos) -> dict[str, dict]:
             for process_source in process_sources:
                 logger.info(f"Processing {source} / {process_source.name.strip()}")
                 summary = get_repo_summary_file(tmp_file, process_source)
-                summarization[source.removesuffix('/')][process_source.name] = summary
+                summarization[source.removesuffix("/")][process_source.name] = summary
     return summarization
 
 
@@ -195,7 +210,9 @@ def output_as_markdown(summaries: dict[str, dict]) -> str:
             )
         output_markdown += "\n\n" + markdown_table(table_data).get_markdown()
 
-    output_markdown += "\n\n## Summary\n\n".replace('\n\n\n', '\n\n')  # TODO: Investigate where newlines comes from
+    output_markdown += "\n\n## Summary\n\n".replace(
+        "\n\n\n", "\n\n"
+    )  # TODO: Investigate where newlines comes from
 
     all_years, data = get_code_per_year_source(summaries)
     output = code_per_year_to_mermaid_chart(all_years, data)
@@ -210,7 +227,9 @@ def print_output_as_rich(summaries: dict[str, dict]) -> None:
         table.add_column("Project", justify="right", style="cyan", no_wrap=True)
         table.add_column("Year", style="magenta")
         table.add_column("Lines of code", justify="right", style="green")
-        source_data = dict(sorted(summaries[source].items(), key=lambda x: x[1]["year"]))
+        source_data = dict(
+            sorted(summaries[source].items(), key=lambda x: x[1]["year"])
+        )
         for repo_name, data in source_data.items():
             table.add_row(repo_name, str(data["year"]), str(data["totalCodeCount"]))
         console.print(table)
