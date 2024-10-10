@@ -300,7 +300,7 @@ def repos_summary(
             d = output_as_json(r)
             j = json.dumps(d)
             print_json(j)
-            return j
+            return d
 
 
 if __name__ == "__main__":
