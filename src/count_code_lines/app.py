@@ -266,7 +266,7 @@ def output_as_json(summaries: dict[str, dict]) -> dict:
 
     all_years, data = get_code_per_year_source(summaries)
     mermaid = code_per_year_to_mermaid_chart(all_years, data)
-    output_json['b64_mermaid_chart'] = base64.b64encode(mermaid.encode('utf-8'))
+    output_json['b64_mermaid_chart'] = base64.b64encode(mermaid.encode('utf-8')).decode('utf-8')
     return output_json
 
 
