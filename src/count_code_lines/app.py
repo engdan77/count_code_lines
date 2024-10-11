@@ -33,6 +33,7 @@ from rich.console import Console
 from rich import print_json
 import warnings
 import plotext as plt
+import base64
 
 __email__ = "daniel@engvalls.eu"
 
@@ -265,7 +266,7 @@ def output_as_json(summaries: dict[str, dict]) -> dict:
 
     all_years, data = get_code_per_year_source(summaries)
     mermaid = code_per_year_to_mermaid_chart(all_years, data)
-    output_json['b64_mermaid_chart'] = mermaid
+    output_json['b64_mermaid_chart'] = base64.b64encode(mermaid.encode('utf-8'))
     return output_json
 
 
