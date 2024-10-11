@@ -262,6 +262,10 @@ def output_as_json(summaries: dict[str, dict]) -> dict:
                 }
             )
         output_json[source_name] = repos_result
+
+    all_years, data = get_code_per_year_source(summaries)
+    mermaid = code_per_year_to_mermaid_chart(all_years, data)
+    output_json['b64_mermaid_chart'] = mermaid
     return output_json
 
 
