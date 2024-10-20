@@ -93,7 +93,7 @@ def get_code_per_year_source(summary: dict) -> tuple[Years, SourceLinesPerYear]:
 def code_per_year_to_mermaid_chart(
     all_years: Years,
     per_source: SourceLinesPerYear,
-    title: str = "Line of codes per year",
+    title: str = "Lines of code per year",
     x_axis_title: str = "Year",
 ) -> str:
     """
