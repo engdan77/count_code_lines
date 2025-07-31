@@ -135,7 +135,7 @@ def print_code_per_year_to_plotext_chart(
 
 def get_all_github_repos(user="engdan77") -> list[Repository]:
     repos = []
-    for r in requests.get(f"https://api.github.com/users/{user}/repos").json():
+    for r in requests.get(f"https://api.github.com/users/{user}/repos?per_page=1000").json():
         year = r["created_at"].split("-").pop(0)
         repos.append(Repository(r["name"], f"{r['html_url']}.git", year))
     return sorted(repos, key=lambda x: x.year)
@@ -166,8 +166,10 @@ def get_repo_create_year(source: str | Repository) -> int:
             r = Repo.clone_from(source.url, tmp_folder)
         else:
             r = Repo(source)
-        first_commit = next(r.iter_commits())
-        year = datetime.datetime.fromtimestamp(first_commit.committed_date).year
+        all_commits = list(r.iter_commits())
+        all_commit_dt = (_.committed_datetime for _ in all_commits)
+        first_commit = min(all_commit_dt)
+        year = first_commit.year
         return year
 
 
