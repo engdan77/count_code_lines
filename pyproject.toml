@@ -1,9 +1,9 @@
 [project]
 name = "count-code-lines"
-version = "0.0.4"
+version = "0.0.5"
 description = "A small package and CLI for counting code lines"
 readme = "README.md"
-requires-python = "~=3.12"
+requires-python = ">=3.11"
 dependencies = [
     "certifi==2024.8.30",
     "cffi==1.17.1",
