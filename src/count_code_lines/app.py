@@ -80,12 +80,13 @@ def get_code_per_year_source(summary: dict) -> tuple[Years, SourceLinesPerYear]:
     for source, repos in summary.items():
         for repo, data in repos.items():
             all_years.add(data["year"])
+    all_years = sorted(all_years)
     source_lines_per_year = collections.defaultdict(list)
     for source, repos in summary.items():
         c = collections.Counter()
         for repo, data in repos.items():
             c[data["year"]] += data["totalCodeCount"]
-        for year, count in c.items():
+        for year, count in sorted(c.items(), key=lambda x: x[0]):
             source_lines_per_year[source].append(count)
     return all_years, source_lines_per_year
 
